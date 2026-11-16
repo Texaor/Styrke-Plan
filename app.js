@@ -4,6 +4,14 @@ const DEFAULT_STATE = {done:{}, logs:{}, theme:'violet', videoOn:true};
 const state = Object.assign({}, DEFAULT_STATE, JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
 const months = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
 const dayShortMon = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
+
+// --- STARTVEKTER (i kg) ---
+const START_MARK = 130;
+const START_BENK = 82.5;
+const START_BOY = 105;      
+const START_SMALBENK = 75;  
+// --------------------------
+
 let view = new Date();
 let selected = new Date();
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -12,53 +20,75 @@ function keyOf(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.get
 function displayKg(n){ return Number.isInteger(n) ? String(n) : String(n).replace('.', ','); }
 function startOfWeek(d){ const x = new Date(d); const weekday = (x.getDay()+6)%7; x.setDate(x.getDate()-weekday); x.setHours(12,0,0,0); return x; }
 function isoWeek(d){ let x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); x.setUTCDate(x.getUTCDate() + 4 - (x.getUTCDay() || 7)); const y = new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil((((x-y)/86400000)+1)/7); }
-function planWeek(d){ const anchor = new Date('2026-09-09T12:00:00'); const diffWeeks = Math.round((startOfWeek(d) - startOfWeek(anchor)) / 604800000); return Math.max(1, 2 + diffWeeks); }
-function add(base, inc, week){ return base + inc*week; }
-function dayLabel(d){ return d.toLocaleDateString('no-NO', { weekday:'long', day:'numeric', month:'long', year:'numeric'}); }
-function isTrainingDay(d){ const day = d.getDay(); return day === 1 || day === 3 || day === 5; }
-const APP_START_PLAN_WEEK = 3;
-function roundToStep(n, step){ return Math.round(n/step)*step; }
-function progressionPosition(week){
-  const offset = Math.max(0, week - APP_START_PLAN_WEEK);
-  const cycle = Math.floor(offset / 4);
-  const pos = offset % 4; 
-  const buildStep = cycle * 3 + Math.min(pos, 2);
-  return {pos, buildStep, deload: pos === 3};
+
+function planWeek(d){ 
+  const anchor = new Date('2026-11-16T12:00:00'); // Settes til dagens uke, så vi starter på Uke 1.
+  const diffWeeks = Math.floor((startOfWeek(d) - startOfWeek(anchor)) / 604800000); 
+  return Math.max(1, 1 + diffWeeks); 
 }
+
+function roundToStep(n, step){ return Math.round(n/step)*step; }
+
+// --- NY PROGRESJON: 2 ØKTER PER VEKT (STEP LOADING) ---
+function progressionPosition(week){
+  const w = Math.max(1, week);
+  const cycle = Math.floor((w - 1) / 7);
+  const weekInCycle = (w - 1) % 7; // 0 til 6
+  const deload = weekInCycle === 6;
+  // Øker kun annenhver uke (Hver 2. økt)
+  const buildStep = cycle * 3 + (deload ? 2 : Math.floor(weekInCycle / 2));
+  const isSecondWorkout = !deload && (weekInCycle % 2 === 1);
+  return { cycle, buildStep, deload, isSecondWorkout };
+}
+
 function loadSet(base, increment, week, step){
   const p = progressionPosition(week);
   const peak = base + increment * p.buildStep;
   if(!p.deload) return roundToStep(peak, step);
   return roundToStep(peak * 0.90, step);
 }
+
 function formatSets(sets, reps){
   return sets.map((kg,i) => `${displayKg(kg)}×${reps[i]}`).join(' · ');
 }
-function mainProgressNote(name, week){
+
+function mainProgressNote(name, week, inc){
   const p = progressionPosition(week);
-  if(p.deload) return `${name}: deloaduke · ca. 10 % lettere enn siste toppuke. Hold teknikken skarp og stopp med overskudd.`;
-  if(p.pos === 0) return `${name}: ny bygguke · kontrollert start etter deload / ny blokk.`;
-  return `${name}: bygguke ${p.pos}/3 · små, realistiske økninger på alle arbeidssettene.`;
+  if(p.deload) return `${name}: Deloaduke · ca. 10 % lettere. Hent deg inn!`;
+  if(!p.isSecondWorkout) return `${name}: Økning! Ny vekt denne uken (+${inc} kg).`;
+  return `${name}: Økt 2 på denne vekten. Mål: Gjør løftet enda renere og raskere før du øker.`;
 }
+
 function getWorkout(d){
   const week = planWeek(d); const day = d.getDay(); const p = progressionPosition(week);
-  const benchClose = [40,60,70,72.5,75,75].map((v)=>loadSet(v,2.5,week,2.5));
+  
+  // SMALBENK (+1.25 kg annenhver økt)
+  const benchClose = [40, 50, Math.max(40, START_SMALBENK-20), Math.max(40, START_SMALBENK-10), Math.max(40, START_SMALBENK-5), START_SMALBENK].map((v)=>loadSet(v, 1.25, week, 1.25));
   const benchCloseReps = [8,6,5,5,4,4];
-  const deadlift = [60,80,100,120,120,140].map((v)=>loadSet(v,2.5,week,2.5));
+  
+  // MARK (+2.5 kg annenhver økt)
+  const deadlift = [60, 80, Math.max(60, START_MARK-30), Math.max(60, START_MARK-15), Math.max(60, START_MARK-10), START_MARK].map((v)=>loadSet(v, 2.5, week, 2.5));
   const deadliftReps = [8,6,5,5,5,3];
-  const squat = [40,60,80,90,95,100].map((v)=>loadSet(v,2.5,week,2.5));
+  
+  // BØY (+2.5 kg annenhver økt)
+  const squat = [40, 60, Math.max(40, START_BOY-25), Math.max(40, START_BOY-15), Math.max(40, START_BOY-7.5), START_BOY].map((v)=>loadSet(v, 2.5, week, 2.5));
   const squatReps = [8,6,5,5,5,3];
-  const bench = [40,60,65,70,75,80].map((v)=>loadSet(v,2.5,week,2.5));
+  
+  // BENK (+1.25 kg annenhver økt)
+  const bench = [40, 50, Math.max(40, START_BENK-20), Math.max(40, START_BENK-10), Math.max(40, START_BENK-5), START_BENK].map((v)=>loadSet(v, 1.25, week, 1.25));
   const benchReps = [8,6,5,5,5,3];
+  
+  // DIPS (+1.25 kg annenhver økt)
   const dipsBase = [0,0,10,10,10,10];
-  const dips = dipsBase.map((v,i)=> i<2 ? 0 : loadSet(v,2.5,week,2.5));
+  const dips = dipsBase.map((v,i)=> i<2 ? 0 : loadSet(v, 1.25, week, 1.25));
   const dipReps = [6,6,5,5,5,5];
-  const deloadText = p.deload ? ' · DELOAD' : '';
+  
+  const deloadText = p.deload ? ' · DELOAD' : (p.isSecondWorkout ? ' · Økt 2 på samme vekt' : ' · Vektøkning!');
   
   if(day === 1){ return { type:'training', title:`Mandag · styrke + 4x4 intervaller${deloadText}`, items:[
     ['Magen','3×12'], ['Rygghev','1×12–15'],
-    ['Benkpress smalt grep',formatSets(benchClose,benchCloseReps),mainProgressNote('Smal benk',week)],
-    ['Markløft vanlig',formatSets(deadlift,deadliftReps),mainProgressNote('Markløft',week)],
+    ['Benkpress smalt grep',formatSets(benchClose,benchCloseReps),mainProgressNote('Smal benk', week, 1.25)],
+    ['Markløft vanlig',formatSets(deadlift,deadliftReps),mainProgressNote('Markløft', week, 2.5)],
     ['4x4 Intervaller (Mølle)','10m oppvarming · 4 drag á 4 min · 3m aktiv pause (gange) · 9m rolig','MÅL: Sett incline på 2-5 % for å skåne knær. Finn en fart (f.eks 10-14 km/t) der du puster skikkelig tungt på slutten av draget.']
   ]}; }
   
@@ -68,7 +98,7 @@ function getWorkout(d){
       : ['Hangups', `Repsuke · 4 sett · jobb mot flere reps med kroppsvekt uten å ødelegge teknikken`, 'Annenhver uke: flere repetisjoner'];
     return { type:'training', title:`Onsdag · styrke + terskelløp${deloadText}`, items:[
       ['Magen','3×15'], ['Rygghev','3×10–12'], hangups, ['Lattroing','4×8–10'],
-      ['Dips med vekt',formatSets(dips,dipReps), p.deload ? 'Deload: første 2 sett kroppsvekt, deretter ca. 10 % lettere vekt.' : 'De to første settene er oppvarming. De fire siste øker med 2,5 kg per byggsteg.'],
+      ['Dips med vekt',formatSets(dips,dipReps), p.deload ? 'Deload: første 2 sett kroppsvekt, deretter ca. 10 % lettere vekt.' : 'De to første settene er oppvarming. De fire siste øker med 1,25 kg hver 2. økt.'],
       ['Sittende hantelpress','18×8 · 20×6 · 22×5 · 22×5 · 22×5','Hold samme vekt til alle reps er solide før du øker.'],
       ['Biceps','4×8'], ['Triceps','4×8'], ['Facepulls','4×10'], 
       ['Terskelløp (Tempo)','10m rolig · 20m tempo (moderat tungt) · 6m nedtrapping','MÅL: 1 % incline. Finn en jevn, halvhøy fart (f.eks 9-11 km/t) som du klarer å holde i 20 minutter uten å stivne av melkesyre.']
@@ -77,15 +107,26 @@ function getWorkout(d){
   
   if(day === 5){ return { type:'training', title:`Fredag · styrke + sone 2${deloadText}`, items:[
     ['Magen','3×12'], ['Rygghev','1×12–15'],
-    ['Knebøy nakke',formatSets(squat,squatReps),mainProgressNote('Knebøy',week)],
-    ['Benkpress',formatSets(bench,benchReps),mainProgressNote('Benkpress',week)],
+    ['Knebøy nakke',formatSets(squat,squatReps),mainProgressNote('Knebøy', week, 2.5)],
+    ['Benkpress',formatSets(bench,benchReps),mainProgressNote('Benkpress', week, 1.25)],
     ['Langkjøring (Sone 2)','44 min jogg på mølle','MÅL: 1-2 % incline. Helt rolig pratetempo (f.eks 6-8 km/t). Målet er lav puls for å bygge grunnkondis, ikke fart!']
   ]}; }
   
   return { type:'rest', title:'Hviledag', items:[] };
 }
 
-function mainLifts(d){ const week = planWeek(d); const day = d.getDay(); const closeBench = loadSet(75,2.5,week,2.5); const dead = loadSet(140,2.5,week,2.5); const squat = loadSet(100,2.5,week,2.5); const bench = loadSet(80,2.5,week,2.5); if(day === 1) return [['Smal benk', closeBench, 4, 2.5], ['Markløft', dead, 3, 2.5]]; if(day === 3) return [['Hangups', null, null, null]]; if(day === 5) return [['Knebøy', squat, 3, 2.5], ['Benkpress', bench, 3, 2.5]]; return []; }
+function mainLifts(d){ 
+  const week = planWeek(d); const day = d.getDay(); 
+  const closeBench = loadSet(START_SMALBENK, 1.25, week, 1.25); 
+  const dead = loadSet(START_MARK, 2.5, week, 2.5); 
+  const squat = loadSet(START_BOY, 2.5, week, 2.5); 
+  const bench = loadSet(START_BENK, 1.25, week, 1.25); 
+  if(day === 1) return [['Smal benk', closeBench, 4, 1.25], ['Markløft', dead, 3, 2.5]]; 
+  if(day === 3) return [['Hangups', null, null, null]]; 
+  if(day === 5) return [['Knebøy', squat, 3, 2.5], ['Benkpress', bench, 3, 1.25]]; 
+  return []; 
+}
+
 function getMonthStats(year, month){ const days = new Date(year, month+1, 0).getDate(); let training = 0, done = 0; for(let d=1; d<=days; d++){ const date = new Date(year, month, d, 12); if(isTrainingDay(date)){ training++; if(state.done[keyOf(date)]) done++; } } return {training, done}; }
 function renderMiniWeek(){ const start = startOfWeek(selected); $('miniWeekTitle').textContent = `Uke ${isoWeek(selected)} · planuke ${planWeek(selected)}`; let doneCount = 0; const wrap = $('miniWeek'); wrap.innerHTML = ''; for(let i=0;i<7;i++){ const d = new Date(start); d.setDate(start.getDate()+i); const div = document.createElement('button'); div.className = 'mini-day ' + (isTrainingDay(d)?'train':'rest') + (keyOf(d)===keyOf(selected)?' selected':'') + (state.done[keyOf(d)]?' done':''); div.innerHTML = `<b>${dayShortMon[i]}</b><span>${d.getDate()}/${d.getMonth()+1}</span><span>${isTrainingDay(d)?(state.done[keyOf(d)]?'Fullført':'Økt'):'Fri'}</span>`; if(isTrainingDay(d)&&state.done[keyOf(d)]) doneCount++; div.addEventListener('click',()=>{ selected = d; view = new Date(d.getFullYear(), d.getMonth(), 1, 12); render();}); wrap.appendChild(div); } $('weekProgress').textContent = `${doneCount}/3 fullført`; }
 function renderCalendar(){ const year = view.getFullYear(); const month = view.getMonth(); const first = new Date(year, month, 1, 12); const daysInMonth = new Date(year, month+1, 0).getDate(); const offset = (first.getDay()+6)%7; const cal = $('cal'); $('monthTitle').textContent = `${months[month][0].toUpperCase()}${months[month].slice(1)} ${year}`; cal.innerHTML = ''; for(let i=0;i<offset;i++){ const blank = document.createElement('div'); blank.className = 'blank'; cal.appendChild(blank); } for(let d=1; d<=daysInMonth; d++){ const date = new Date(year, month, d, 12); const btn = document.createElement('button'); btn.className = 'day-cell ' + (isTrainingDay(date) ? 'train' : 'rest'); if(state.done[keyOf(date)]) btn.classList.add('done'); if(keyOf(date) === keyOf(new Date())) btn.classList.add('today'); if(keyOf(date) === keyOf(selected)) btn.classList.add('selected'); const short = dayShortMon[(date.getDay()+6)%7]; const marker = isTrainingDay(date) ? (state.done[keyOf(date)] ? 'FULLFØRT' : 'ØKT') : 'FRI'; btn.innerHTML = `<span class="mini">${short}</span><span class="num">${d}</span><span class="marker">${marker}</span>`; btn.addEventListener('click', ()=>{ selected = date; render(); }); cal.appendChild(btn); } const stats = getMonthStats(year, month); $('monthPercent').textContent = stats.training ? `${Math.round((stats.done/stats.training)*100)}%` : '0%'; }
@@ -127,7 +168,8 @@ function initApp(){
 
     document.body.dataset.theme = state.theme || 'violet';
 
-    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)'),matches){
+
       state.videoOn = false;
     }
 
@@ -135,7 +177,7 @@ function initApp(){
     render();
 
     if('serviceWorker' in navigator){
-      navigator.serviceWorker.register('./sw.js?v=66').then(function(reg){
+      navigator.serviceWorker.register('./sw.js?v=68').then(function(reg){
         if(reg.update) reg.update();
       }).catch(function(){});
     }

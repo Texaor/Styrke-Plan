@@ -1,13 +1,13 @@
-const CACHE = 'styrkeplan-v66';
+const CACHE = 'styrkeplan-v68';
 const CORE = [
   './',
   './index.html',
-  './icon-180.png?v=66',
-  './style.css?v=66',
-  './app.js?v=66',
-  './manifest.json?v=66',
+  './icon-180.png?v=68',
+  './style.css?v=68',
+  './app.js?v=68',
+  './manifest.json?v=68',
   './icon.svg',
-  './bg-loop.mp4?v=66'
+  './bg-loop.mp4?v=68'
 ];
 
 self.addEventListener('install', function(event){
